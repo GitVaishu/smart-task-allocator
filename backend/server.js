@@ -1,8 +1,6 @@
-// backend/server.js
+// backend/server.js - Complete version with DSA algorithms
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const PORT = 3001;
@@ -11,7 +9,7 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
-// Sample data - we'll move this to JSON files later
+// Sample data - simulating a database
 let teamData = {
   members: [
     {
@@ -69,85 +67,41 @@ let teamData = {
       priority: "low",
       deadline: "2025-08-15",
       assignedTo: null
+    },
+    {
+      id: 4,
+      title: "Implement User Authentication",
+      description: "JWT-based authentication system",
+      requiredSkills: ["Node.js", "JavaScript"],
+      estimatedHours: 15,
+      priority: "high",
+      deadline: "2025-08-08",
+      assignedTo: null
     }
   ]
 };
 
-// Basic DSA Algorithm - Greedy Task Allocation
-function allocateTasks(members, tasks) {
-  // Reset workloads
-  members.forEach(member => member.currentWorkload = 0);
-  
-  // Sort tasks by priority and deadline (Priority Queue concept)
+// DSA ALGORITHMS IMPLEMENTATION
+
+// Priority Queue implementation for task sorting
+function prioritizeTask(a, b) {
   const priorityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
-  const sortedTasks = [...tasks].sort((a, b) => {
-    // First sort by priority
-    if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-      return priorityOrder[b.priority] - priorityOrder[a.priority];
-    }
-    // Then by deadline
-    return new Date(a.deadline) - new Date(b.deadline);
-  });
-
-  const assignments = [];
-
-  // Greedy allocation algorithm
-  for (const task of sortedTasks) {
-    let bestMember = null;
-    let bestScore = -1;
-
-    // Find best member for this task (HashMap-like skill lookup)
-    for (const member of members) {
-      // Check if member can take more work
-      if (member.currentWorkload + task.estimatedHours > member.maxCapacity) {
-        continue;
-      }
-
-      // Calculate match score
-      const score = calculateMatchScore(member, task);
-      
-      if (score > bestScore) {
-        bestScore = score;
-        bestMember = member;
-      }
-    }
-
-    // Assign task to best member
-    if (bestMember && bestScore > 0) {
-      assignments.push({
-        taskId: task.id,
-        taskTitle: task.title,
-        memberId: bestMember.id,
-        memberName: bestMember.name,
-        matchScore: Math.round(bestScore),
-        estimatedHours: task.estimatedHours
-      });
-      
-      bestMember.currentWorkload += task.estimatedHours;
-      task.assignedTo = bestMember.id;
-    } else {
-      // Task couldn't be assigned
-      assignments.push({
-        taskId: task.id,
-        taskTitle: task.title,
-        memberId: null,
-        memberName: "Unassigned",
-        matchScore: 0,
-        estimatedHours: task.estimatedHours,
-        reason: "No available member with required skills"
-      });
-    }
+  
+  // First sort by priority (higher priority first)
+  if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+    return priorityOrder[b.priority] - priorityOrder[a.priority];
   }
-
-  return assignments;
+  
+  // Then by deadline (earlier deadline first)
+  return new Date(a.deadline) - new Date(b.deadline);
 }
 
-// Calculate how well a member matches a task
+// HashMap-based skill matching function
 function calculateMatchScore(member, task) {
   let skillScore = 0;
   let skillCount = 0;
 
-  // Check skill match (HashMap-like access)
+  // Check skill match using HashMap concept (JavaScript object)
   for (const requiredSkill of task.requiredSkills) {
     if (member.skillLevels[requiredSkill]) {
       skillScore += member.skillLevels[requiredSkill];
@@ -165,91 +119,296 @@ function calculateMatchScore(member, task) {
   const workloadRatio = member.currentWorkload / member.maxCapacity;
   const workloadPenalty = workloadRatio * 20; // Max 20 point penalty
 
-  // Final score (0-100 scale)
-  const finalScore = avgSkillLevel * 10 - workloadPenalty;
+  // Deadline urgency boost
+  const daysUntilDeadline = Math.max(1, 
+    (new Date(task.deadline) - new Date()) / (1000 * 60 * 60 * 24)
+  );
+  const urgencyBoost = Math.min(10, 10 / daysUntilDeadline); // Max 10 point boost
+
+  // Final score calculation
+  const finalScore = avgSkillLevel * 10 - workloadPenalty + urgencyBoost;
   
   return Math.max(0, finalScore);
 }
 
-// API Routes
+// Main Greedy Algorithm for Task Allocation
+function allocateTasks(members, tasks) {
+  // Reset all workloads
+  members.forEach(member => member.currentWorkload = 0);
+  tasks.forEach(task => task.assignedTo = null);
+  
+  // Step 1: Sort tasks using Priority Queue concept
+  const sortedTasks = [...tasks].sort(prioritizeTask);
+  
+  const assignments = [];
+  const unassignedTasks = [];
+
+  // Step 2: Greedy allocation - assign each task to best available member
+  for (const task of sortedTasks) {
+    let bestMember = null;
+    let bestScore = -1;
+
+    // Find best member for this task
+    for (const member of members) {
+      // Check capacity constraint
+      if (member.currentWorkload + task.estimatedHours > member.maxCapacity) {
+        continue;
+      }
+
+      // Calculate match score
+      const score = calculateMatchScore(member, task);
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMember = member;
+      }
+    }
+
+    // Assign task to best member or mark as unassigned
+    if (bestMember && bestScore > 0) {
+      assignments.push({
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        memberId: bestMember.id,
+        memberName: bestMember.name,
+        matchScore: Math.round(bestScore),
+        estimatedHours: task.estimatedHours,
+        priority: task.priority,
+        deadline: task.deadline,
+        requiredSkills: task.requiredSkills,
+        status: 'assigned'
+      });
+      
+      // Update member workload
+      bestMember.currentWorkload += task.estimatedHours;
+      task.assignedTo = bestMember.id;
+    } else {
+      unassignedTasks.push({
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        memberId: null,
+        memberName: "Unassigned",
+        matchScore: 0,
+        estimatedHours: task.estimatedHours,
+        priority: task.priority,
+        deadline: task.deadline,
+        requiredSkills: task.requiredSkills,
+        status: 'unassigned',
+        reason: bestScore === -1 ? "No available member with required skills" : "All suitable members at capacity"
+      });
+    }
+  }
+
+  return { assignments, unassignedTasks };
+}
+
+// API ROUTES
+
 app.get('/api/health', (req, res) => {
   res.json({ 
     message: 'Smart Task Allocator API is running!',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
   });
 });
 
 app.get('/api/members', (req, res) => {
-  res.json(teamData.members);
+  res.json({
+    success: true,
+    data: teamData.members,
+    count: teamData.members.length
+  });
 });
 
 app.get('/api/tasks', (req, res) => {
-  res.json(teamData.tasks);
+  res.json({
+    success: true,
+    data: teamData.tasks,
+    count: teamData.tasks.length
+  });
 });
 
 app.post('/api/members', (req, res) => {
-  const newMember = {
-    id: Date.now(), // Simple ID generation
-    currentWorkload: 0,
-    ...req.body
-  };
-  teamData.members.push(newMember);
-  res.json(newMember);
-});
-
-app.post('/api/tasks', (req, res) => {
-  const newTask = {
-    id: Date.now(),
-    assignedTo: null,
-    ...req.body
-  };
-  teamData.tasks.push(newTask);
-  res.json(newTask);
-});
-
-app.post('/api/allocate', (req, res) => {
   try {
-    const assignments = allocateTasks(teamData.members, teamData.tasks);
+    const { name, skills, skillLevels, maxCapacity } = req.body;
     
-    // Calculate some stats
-    const totalTasks = teamData.tasks.length;
-    const assignedTasks = assignments.filter(a => a.memberId !== null).length;
-    const avgMatchScore = assignments
-      .filter(a => a.matchScore > 0)
-      .reduce((sum, a) => sum + a.matchScore, 0) / assignedTasks || 0;
+    if (!name || !skills || !skillLevels || !maxCapacity) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: name, skills, skillLevels, maxCapacity'
+      });
+    }
 
+    const newMember = {
+      id: Date.now(),
+      name,
+      skills,
+      skillLevels,
+      maxCapacity,
+      currentWorkload: 0
+    };
+    
+    teamData.members.push(newMember);
+    
     res.json({
-      assignments,
-      stats: {
-        totalTasks,
-        assignedTasks,
-        unassignedTasks: totalTasks - assignedTasks,
-        avgMatchScore: Math.round(avgMatchScore),
-        efficiency: Math.round((assignedTasks / totalTasks) * 100)
-      },
-      members: teamData.members.map(m => ({
-        id: m.id,
-        name: m.name,
-        currentWorkload: m.currentWorkload,
-        maxCapacity: m.maxCapacity,
-        utilization: Math.round((m.currentWorkload / m.maxCapacity) * 100)
-      }))
+      success: true,
+      data: newMember,
+      message: 'Member added successfully'
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// Reset assignments
+app.post('/api/tasks', (req, res) => {
+  try {
+    const { title, description, requiredSkills, estimatedHours, priority, deadline } = req.body;
+    
+    if (!title || !requiredSkills || !estimatedHours || !priority || !deadline) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: title, requiredSkills, estimatedHours, priority, deadline'
+      });
+    }
+
+    const newTask = {
+      id: Date.now(),
+      title,
+      description: description || '',
+      requiredSkills,
+      estimatedHours,
+      priority,
+      deadline,
+      assignedTo: null
+    };
+    
+    teamData.tasks.push(newTask);
+    
+    res.json({
+      success: true,
+      data: newTask,
+      message: 'Task added successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Main allocation endpoint - runs the DSA algorithms
+app.post('/api/allocate', (req, res) => {
+  try {
+    const result = allocateTasks(teamData.members, teamData.tasks);
+    
+    // Calculate statistics
+    const totalTasks = teamData.tasks.length;
+    const assignedTasks = result.assignments.length;
+    const unassignedTasks = result.unassignedTasks.length;
+    
+    const avgMatchScore = result.assignments.length > 0 
+      ? result.assignments.reduce((sum, a) => sum + a.matchScore, 0) / result.assignments.length 
+      : 0;
+
+    // Calculate member utilization
+    const memberStats = teamData.members.map(member => ({
+      id: member.id,
+      name: member.name,
+      currentWorkload: member.currentWorkload,
+      maxCapacity: member.maxCapacity,
+      utilization: Math.round((member.currentWorkload / member.maxCapacity) * 100),
+      availableHours: member.maxCapacity - member.currentWorkload
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        assignments: result.assignments,
+        unassignedTasks: result.unassignedTasks,
+        statistics: {
+          totalTasks,
+          assignedTasks,
+          unassignedTasks,
+          assignmentRate: Math.round((assignedTasks / totalTasks) * 100),
+          avgMatchScore: Math.round(avgMatchScore),
+          totalEstimatedHours: teamData.tasks.reduce((sum, task) => sum + task.estimatedHours, 0),
+          allocatedHours: result.assignments.reduce((sum, a) => sum + a.estimatedHours, 0)
+        },
+        memberStats
+      },
+      message: 'Task allocation completed successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Reset all assignments
 app.post('/api/reset', (req, res) => {
   teamData.members.forEach(member => member.currentWorkload = 0);
   teamData.tasks.forEach(task => task.assignedTo = null);
-  res.json({ message: 'All assignments reset successfully' });
+  
+  res.json({
+    success: true,
+    message: 'All assignments have been reset successfully'
+  });
+});
+
+// Get algorithm info for documentation
+app.get('/api/algorithms', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      algorithms: [
+        {
+          name: "Priority Queue",
+          description: "Tasks are sorted by priority (high > medium > low) and then by deadline",
+          timeComplexity: "O(n log n)",
+          spaceComplexity: "O(n)"
+        },
+        {
+          name: "HashMap (Skill Matching)",
+          description: "Fast O(1) lookup for member skills and skill levels",
+          timeComplexity: "O(1) per lookup",
+          spaceComplexity: "O(k) where k is number of skills"
+        },
+        {
+          name: "Greedy Algorithm",
+          description: "Assigns each task to the best available member based on match score",
+          timeComplexity: "O(n * m) where n=tasks, m=members",
+          spaceComplexity: "O(n + m)"
+        },
+        {
+          name: "Multi-criteria Optimization",
+          description: "Match score considers skill level, workload balance, and deadline urgency",
+          timeComplexity: "O(k) per calculation where k=required skills",
+          spaceComplexity: "O(1)"
+        }
+      ],
+      overallComplexity: {
+        time: "O(n log n + n * m * k)",
+        space: "O(n + m + k)",
+        description: "n=tasks, m=members, k=avg skills per task"
+      }
+    }
+  });
 });
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 Test the API: http://localhost:${PORT}/api/health`);
+  console.log(`🔍 View algorithms: http://localhost:${PORT}/api/algorithms`);
+  console.log(`👥 Members: http://localhost:${PORT}/api/members`);
+  console.log(`📋 Tasks: http://localhost:${PORT}/api/tasks`);
 });
 
 module.exports = app;
